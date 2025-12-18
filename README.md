@@ -8,11 +8,11 @@ It contains **executable scripts**, optional **model checkpoints (.pth)**, and a
 
 ## 0) Citation and identity
 
-**Title (thesis/paper):** `<YOUR TITLE HERE>`  
-**Author:** `<YOUR NAME>`  
-**Affiliation:** `<YOUR INSTITUTION>`  
+**Title (thesis/paper):** `<Vision Mamba Robustness on Indonesian Traffic Sign Recognition>`  
+**Author:** `<Marthen Solang>`  
+**Affiliation:** `<ITB>`  
 **Date:** `<YYYY-MM-DD>`  
-**Repository version used in Bab IV/V:** `git commit <COMMIT_HASH>`  
+**Repository version used in Thesis Bab IV/V:** `git commit <COMMIT_HASH>`  
 
 If you create a DOI (recommended), add it here:
 - **DOI:** `<ZENODO/OSF DOI LINK>`
