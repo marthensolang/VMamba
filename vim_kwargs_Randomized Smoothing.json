@@ -1,0 +1,12 @@
+{
+  "dim": 192,
+  "dt_rank": 24,
+  "dim_inner": 192,
+  "d_state": 64,
+  "num_classes": 21,
+  "image_size": 224,
+  "patch_size": 32,
+  "channels": 3,
+  "dropout": 0.2,
+  "depth": 6
+}

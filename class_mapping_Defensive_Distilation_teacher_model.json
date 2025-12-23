@@ -1,0 +1,25 @@
+{
+  "idx_to_class": {
+    "0": "lampu_hijau",
+    "1": "lampu_kuning",
+    "2": "lampu_merah",
+    "3": "larangan-parkir",
+    "4": "larangan_belok_kanan",
+    "5": "larangan_belok_kiri",
+    "6": "larangan_berhenti",
+    "7": "larangan_berjalan_terus_wajib_berhenti_sesaat",
+    "8": "larangan_masuk_bagi_kendaraan_bermotor_dan_tidak_bermotor",
+    "9": "larangan_memutar_balik",
+    "10": "peringatan_alat_pemberi_isyarat_lalu_lintas",
+    "11": "peringatan_banyak_pejalan_kaki_menggunakan_zebra_cross",
+    "12": "peringatan_penegasan_rambu_tambahan",
+    "13": "peringatan_pintu_perlintasan_kereta_api",
+    "14": "peringatan_simpang_tiga_sisi_kiri",
+    "15": "perintah_masuk_jalur_kiri",
+    "16": "perintah_pilihan_memasuki_salah_satu_jalur",
+    "17": "petunjuk-penyeberangan-pejalan-kaki",
+    "18": "petunjuk_area_parkir",
+    "19": "petunjuk_lokasi_pemberhentian_bus",
+    "20": "petunjuk_lokasi_putar_balik"
+  }
+}

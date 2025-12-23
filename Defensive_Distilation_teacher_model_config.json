@@ -1,0 +1,11 @@
+{
+  "num_classes": 21,
+  "temperature_teacher": 20.0,
+  "temperature_student": 20.0,
+  "temperature_inference": 1.0,
+  "batch_size": 64,
+  "base_lr": 0.0001,
+  "weight_decay": 0.0001,
+  "defense_method": "defensive_distillation",
+  "reference": "Papernot et al. (2016) - Distillation as a Defense to Adversarial Perturbations"
+}

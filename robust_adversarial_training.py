@@ -1,65 +1,7 @@
 # ============================================================
 # file: robust_adversarial_training_fixed.py
-# Advanced Adversarial Training 
+# Advanced Adversarial Training - FIXED VERSION
 # ============================================================
-# What this script does
-# - Loads a *base* Vision Mamba (Vim) checkpoint trained for Indonesian Traffic Sign
-#   Recognition (TSR).
-# - Runs adversarial training using a schedule that alternates:
-#     (1) FGSM with eps in {4/255, 8/255}
-#     (2) PGD  with eps in {4/255, 8/255}
-# - Evaluates robustness on validation and test sets under:
-#     - Clean (no attack)
-#     - FGSM (eps=4/255, 8/255)
-#     - PGD  (eps=4/255, 8/255)
-# - Saves:
-#     - best_robust_model.pth  (best avg robust accuracy on val)
-#     - final_robust_model.pth
-#     - training_history.csv
-#     - training_report.json
-#     - training_results.png
-#
-# Key design notes (important for correct interpretation)
-# - The dataset is normalized using ImageNet statistics:
-#     Normalize(MEAN, STD)
-#   Therefore, adversarial perturbations are applied in *normalized space*.
-#   Epsilon/alpha are defined in pixel space [0,1] (e.g., 8/255) and converted
-#   internally using per-channel scaling: eps_scaled = eps / STD.
-# - AttackScheduler cycles attack types and epsilons by epoch and batch index,
-#   so the model sees multiple threat settings during training.
-#
-# Expected dataset folder layout
-# dataset_rambu_lalu_lintas/
-#   train/<class_name>/*.jpg|png|...
-#   valid/<class_name>/*.jpg|png|...
-#   test/<class_name>/*.jpg|png|...
-#
-# How to run
-#   python robust_adversarial_training_fixed.py
-#
-# Common runtime pitfalls (for users)
-# 1) Checkpoint format mismatch:
-#    - This code loads either:
-#        a) base_ckpt["model"]  (if "model" key exists), OR
-#        b) base_ckpt as a raw state_dict
-#    - If your checkpoint stores weights under "model_state_dict", you may get a
-#      KeyError or load_state_dict mismatch. In that case, adjust loading logic
-#      locally (this file intentionally preserves the original executable code).
-# 2) Directory issues:
-#    - Ensure outputs_vim_rambu_small_*/best_vim_rambu_small.pth exists
-#    - Ensure dataset directories exist: train/, valid/, test/
-# 3) Library versions:
-#    - matplotlib style 'seaborn-v0_8' requires a recent matplotlib; otherwise
-#      matplotlib may raise a style error.
-#
-# ---------------------------------------------------------------------------
-# IMPORTANT: "comments-only" policy
-# ---------------------------------------------------------------------------
-# Per request: this file is prepared for GitHub readability and international
-# readers by adding/updating English guidance and comments. Executable Python
-# lines are preserved; only comment blocks and docstrings are adjusted.
-# ---------------------------------------------------------------------------
-
 from __future__ import annotations
 import os
 import json
@@ -80,32 +22,32 @@ import numpy as np
 from vision_mamba import Vim
 
 # ------------------------------------------------------------
-# 1. CONFIG & UTILS (PATH CHECKS + COMPAT HELPERS)
+# 1. CONFIG & UTILS - DIPERBAIKI
 # ------------------------------------------------------------
 def setup_paths() -> Tuple[Path, Path, Path, Path]:
-    """Set up required paths with validation and a safe fallback to the latest run."""
+    """Setup paths dengan error handling yang lebih baik"""
     base_model_dir = Path("outputs_vim_rambu_small_20251119_220259")
-
+    
     if not base_model_dir.exists():
-        # Fallback: find the most recent folder matching the expected pattern
+        # Fallback: cari folder terbaru dengan pattern
         candidates = list(Path(".").glob("outputs_vim_rambu_small_*"))
         if candidates:
             base_model_dir = max(candidates, key=os.path.getmtime)
             print(f"[INFO] Menggunakan model terbaru: {base_model_dir}")
         else:
             raise FileNotFoundError("Tidak ditemukan folder model base")
-
+    
     ckpt_path = base_model_dir / "best_vim_rambu_small.pth"
     config_path = base_model_dir / "config.json"
     classmap_path = base_model_dir / "class_mapping.json"
-
+    
     for path in [ckpt_path, config_path, classmap_path]:
         if not path.exists():
             raise FileNotFoundError(f"File tidak ditemukan: {path}")
-
+    
     return base_model_dir, ckpt_path, config_path, classmap_path
 
-# Resolve base-model paths once at startup (fail-fast if missing)
+# Setup paths
 BASE_MODEL_DIR, BASE_CKPT_PATH, BASE_CONFIG_PATH, BASE_CLASSMAP_PATH = setup_paths()
 
 DATA_ROOT = Path("dataset_rambu_lalu_lintas")
@@ -113,24 +55,23 @@ TRAIN_DIR = DATA_ROOT / "train"
 VAL_DIR = DATA_ROOT / "valid"
 TEST_DIR = DATA_ROOT / "test"
 
-# Training hyperparameters (stable defaults)
+# Hyperparameters untuk training stabil
 BATCH_SIZE = 32
 MAX_EPOCHS = 60
 BASE_LR = 3e-4
 WEIGHT_DECAY = 1e-4
 
-# Attack configuration used during adversarial training
-ATTACK_EPSILONS = [4/255, 8/255]  # multiple eps values to diversify training
+# Multiple Attack Parameters untuk Variasi Training
+ATTACK_EPSILONS = [4/255, 8/255]  # Multiple epsilon untuk variasi
 PGD_ALPHA = 2/255
 PGD_STEPS = 10
 PGD_RANDOM_START = True
 
-# ImageNet normalization (must match preprocessing used by the base model)
 MEAN = (0.485, 0.456, 0.406)
 STD = (0.229, 0.224, 0.225)
 
 def create_save_dir(prefix: str = "robust_adv_train") -> Path:
-    """Create an output directory with a timestamp and print where results go."""
+    """Membuat save directory dengan verifikasi"""
     ts = time.strftime("%Y%m%d_%H%M%S")
     out_dir = Path(f"{prefix}_{ts}")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -139,33 +80,27 @@ def create_save_dir(prefix: str = "robust_adv_train") -> Path:
 
 def build_vim_kwargs_compatible(num_classes: int, img_size: int = 224) -> Dict:
     """
-    Build Vim kwargs that are compatible with the *base* checkpoint architecture.
-
-    Notes:
-    - Values are intentionally aligned with the base model (dim=192, depth=6, etc.)
-      to avoid state_dict shape mismatches.
-    - We also filter kwargs by Vim's signature to stay compatible across versions.
+    Build Vim kwargs yang KOMPATIBEL dengan model base
+    Menggunakan arsitektur yang sama dengan model base (dim=192, depth=6)
     """
     sig = inspect.signature(Vim).parameters
     kwargs = {
-        "dim": 192,  # SAME as base model
-        "dt_rank": 24,  # SAME as base model
-        "dim_inner": 192,  # SAME as base model
-        "d_state": 64,  # SAME as base model
+        "dim": 192,  # SAMA dengan base model
+        "dt_rank": 24,  # SAMA dengan base model
+        "dim_inner": 192,  # SAMA dengan base model
+        "d_state": 64,  # SAMA dengan base model
         "num_classes": num_classes,
         "image_size": img_size,
         "patch_size": 32,
         "channels": 3,
-        "dropout": 0.20,  # SAME as base model
-        "depth": 6,  # SAME as base model
+        "dropout": 0.20,  # SAMA dengan base model
+        "depth": 6,  # SAMA dengan base model
     }
-    # Some Vim implementations expose "heads" (others may not)
     if "heads" in sig:
         kwargs["heads"] = 4
     return {k: v for k, v in kwargs.items() if k in sig}
 
 def accuracy_from_logits(logits: torch.Tensor, targets: torch.Tensor) -> float:
-    """Compute top-1 accuracy from raw logits."""
     preds = logits.argmax(dim=1)
     correct = (preds == targets).sum().item()
     total = targets.size(0)
@@ -174,11 +109,7 @@ def accuracy_from_logits(logits: torch.Tensor, targets: torch.Tensor) -> float:
 # ------------------------------------------------------------
 # 2. ADVERSARIAL ATTACK UTILITIES
 # ------------------------------------------------------------
-# NOTE (EN): Inputs to the model are normalized (Normalize(MEAN, STD)).
-# Therefore, attacks operate in normalized space. The helper below computes
-# min/max bounds in normalized space, corresponding to pixel bounds [0,1].
 def channel_bounds_normalized(mean, std, device):
-    """Return clamping bounds in normalized space corresponding to pixel range [0,1]."""
     mean_t = torch.tensor(mean, device=device).view(1, 3, 1, 1)
     std_t = torch.tensor(std, device=device).view(1, 3, 1, 1)
     x_min = (0.0 - mean_t) / std_t
@@ -186,12 +117,9 @@ def channel_bounds_normalized(mean, std, device):
     return x_min, x_max
 
 def clamp_normed(x, x_min, x_max):
-    """Clamp a normalized tensor to normalized min/max bounds."""
     return torch.max(torch.min(x, x_max), x_min)
 
-# Scale eps/alpha from pixel space to normalized space: eps_scaled = eps/std
 def _scaled_eps_alpha(eps: float, alpha: float, std, device):
-    """Convert eps/alpha defined in pixel space into per-channel normalized-space values."""
     std_t = torch.tensor(std, device=device).view(1, 3, 1, 1)
     return eps / std_t, alpha / std_t
 
@@ -204,21 +132,21 @@ def fgsm_attack(
     mean=MEAN,
     std=STD,
 ) -> torch.Tensor:
-    """FGSM attack (single-step sign gradient) in normalized space."""
+    """FGSM Attack"""
     device = x.device
     model.eval()
-
+    
     x_min, x_max = channel_bounds_normalized(mean, std, device)
     eps_scaled, _ = _scaled_eps_alpha(eps, eps, std, device)
 
     x_adv = x.detach().clone().requires_grad_(True)
-
+    
     with torch.enable_grad():
         logits = model(x_adv)
         loss = nn.functional.cross_entropy(logits, y)
-
+    
     grad = torch.autograd.grad(loss, x_adv, retain_graph=False)[0]
-
+    
     with torch.no_grad():
         x_adv = clamp_normed(x_adv + eps_scaled * grad.sign(), x_min, x_max)
 
@@ -236,15 +164,14 @@ def pgd_attack(
     mean=MEAN,
     std=STD,
 ) -> torch.Tensor:
-    """Standard PGD (iterative FGSM) in normalized space, with optional random start."""
+    """Standard PGD Attack"""
     device = x.device
     model.eval()
-
+    
     x_min, x_max = channel_bounds_normalized(mean, std, device)
     eps_scaled, alpha_scaled = _scaled_eps_alpha(eps, alpha, std, device)
 
     if random_start:
-        # Start from a random point within the epsilon box (in normalized space)
         delta = torch.empty_like(x).uniform_(-1.0, 1.0) * eps_scaled
         x_adv = clamp_normed(x + delta, x_min, x_max)
     else:
@@ -252,22 +179,21 @@ def pgd_attack(
 
     for _ in range(steps):
         x_adv.requires_grad_(True)
-
+        
         with torch.enable_grad():
             logits = model(x_adv)
             loss = nn.functional.cross_entropy(logits, y)
-
+        
         grad = torch.autograd.grad(loss, x_adv, retain_graph=False)[0]
 
         with torch.no_grad():
-            # Gradient step, then project back into the epsilon-box around x
             x_adv = x_adv + alpha_scaled * grad.sign()
             delta = torch.clamp(x_adv - x, min=-eps_scaled, max=eps_scaled)
             x_adv = clamp_normed(x + delta, x_min, x_max)
 
     return x_adv.detach()
 
-# 2.3 Adaptive PGD Attack (Stronger)
+# 2.3 Adaptive PGD Attack (Lebih Kuat)
 def adaptive_pgd_attack(
     model: nn.Module,
     x: torch.Tensor,
@@ -278,42 +204,42 @@ def adaptive_pgd_attack(
     mean=MEAN,
     std=STD,
 ) -> torch.Tensor:
-    """A stronger PGD variant with more steps and an epsilon-dependent step size."""
+    """Adaptive PGD dengan lebih banyak steps dan adaptive alpha"""
     device = x.device
     model.eval()
-
+    
     # Adaptive alpha based on epsilon
     alpha = max(eps / 4, 1/255)  # Minimum alpha
-
+    
     return pgd_attack(model, x, y, eps, alpha, steps, random_start, mean, std)
 
 # 2.4 Multi-Step Attack Scheduler
 class AttackScheduler:
-    """Rotate attack functions and eps values over epochs/batches to diversify training."""
-
+    """Scheduler untuk variasi attack selama training"""
+    
     def __init__(self, attack_fns: List[Callable], eps_list: List[float]):
         self.attack_fns = attack_fns
         self.eps_list = eps_list
-
+        
     def get_attack(self, epoch: int, batch_idx: int):
-        """Return (attack_fn, eps) for the current epoch/batch based on simple rotation rules."""
-        # Rotate across different attack types
+        """Get attack configuration berdasarkan epoch dan batch"""
+        # Rotasi antara different attack types
         attack_idx = (epoch + batch_idx // 10) % len(self.attack_fns)
         attack_fn = self.attack_fns[attack_idx]
-
-        # Rotate across epsilon values
+        
+        # Variasi epsilon
         eps_idx = (epoch + batch_idx // 5) % len(self.eps_list)
         eps = self.eps_list[eps_idx]
-
+        
         return attack_fn, eps
 
 # ------------------------------------------------------------
 # 3. DATASET & DATALOADER
 # ------------------------------------------------------------
 def get_dataloaders() -> Tuple[DataLoader, DataLoader, DataLoader, Dict[int, str]]:
-    """Load train/val/test datasets with augmentations (train) and deterministic eval transforms."""
-
-    # Strong augmentation for adversarial training (to improve generalization)
+    """Enhanced data loading dengan lebih banyak augmentasi"""
+    
+    # Strong Augmentation untuk Adversarial Training
     train_tfms = transforms.Compose([
         transforms.Resize(256),
         transforms.RandomResizedCrop(224, scale=(0.7, 1.0)),
@@ -324,7 +250,6 @@ def get_dataloaders() -> Tuple[DataLoader, DataLoader, DataLoader, Dict[int, str
         transforms.Normalize(MEAN, STD),
     ])
 
-    # Evaluation uses a deterministic center-crop pipeline
     eval_tfms = transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(224),
@@ -332,7 +257,7 @@ def get_dataloaders() -> Tuple[DataLoader, DataLoader, DataLoader, Dict[int, str
         transforms.Normalize(MEAN, STD),
     ])
 
-    # Verify directories exist (fail-fast with a clear error)
+    # Verify directories exist
     for dir_path in [TRAIN_DIR, VAL_DIR, TEST_DIR]:
         if not dir_path.exists():
             raise FileNotFoundError(f"Directory tidak ditemukan: {dir_path}")
@@ -349,7 +274,6 @@ def get_dataloaders() -> Tuple[DataLoader, DataLoader, DataLoader, Dict[int, str
     print(f"[INFO] Val samples: {len(val_ds)}")
     print(f"[INFO] Test samples: {len(test_ds)}")
 
-    # Conservative default for worker processes
     num_workers = min(4, os.cpu_count() // 2)
 
     train_loader = DataLoader(
@@ -392,10 +316,8 @@ def adversarial_train_one_epoch(
     epoch: int,
 ) -> Tuple[float, float, float]:
     """
-    Run one epoch of adversarial training.
-
-    Returns:
-      (train_loss, train_adv_acc, train_clean_acc)
+    Satu epoch adversarial training
+    Returns: (train_loss, train_adv_acc, train_clean_acc)
     """
     model.train()
     running_loss = 0.0
@@ -407,24 +329,24 @@ def adversarial_train_one_epoch(
         images = images.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
 
-        # Select attack configuration for this batch
+        # Get attack configuration dari scheduler
         attack_fn, eps = attack_scheduler.get_attack(epoch, batch_idx)
-
-        # Generate adversarial examples for training (attack fn handles gradients internally)
+        
+        # Generate adversarial examples
         with torch.no_grad():
             adv_images = attack_fn(model, images, targets, eps=eps)
 
-        # Optimize on adversarial examples
+        # Train dengan adversarial examples
         optimizer.zero_grad()
-
-        # Forward pass (adversarial)
+        
+        # Forward pass dengan adversarial examples
         adv_logits = model(adv_images)
         loss = criterion(adv_logits, targets)
-
+        
         loss.backward()
         optimizer.step()
 
-        # Compute clean + adversarial batch accuracy (for logging)
+        # Calculate metrics
         with torch.no_grad():
             clean_logits = model(images)
             clean_acc = accuracy_from_logits(clean_logits, targets)
@@ -436,7 +358,7 @@ def adversarial_train_one_epoch(
         running_clean_correct += clean_acc * batch_size
         total += batch_size
 
-        # Progress logging
+        # Print progress
         if batch_idx % 20 == 0:
             print(f"  Batch {batch_idx}: Loss: {loss.item():.4f}, "
                   f"Clean Acc: {clean_acc*100:.2f}%, "
@@ -445,7 +367,7 @@ def adversarial_train_one_epoch(
     epoch_loss = running_loss / total
     epoch_adv_acc = running_adv_correct / total
     epoch_clean_acc = running_clean_correct / total
-
+    
     return epoch_loss, epoch_adv_acc, epoch_clean_acc
 
 @torch.no_grad()
@@ -456,67 +378,65 @@ def evaluate_robustness(
     device: torch.device,
 ) -> Dict[str, float]:
     """
-    Evaluate robustness under a small fixed set of attacks (FGSM/PGD at eps=4/255,8/255),
-    plus clean accuracy/loss.
+    Evaluate model robustness terhadap berbagai serangan
     """
     model.eval()
     results = {}
-
-    # Clean evaluation accumulators
+    
+    # Clean evaluation
     clean_correct = 0
     clean_total = 0
     clean_loss = 0.0
-
-    # Attack evaluations (fixed set for consistent reporting)
+    
+    # Attack evaluations
     attacks = {
         'fgsm_4': lambda m, x, y: fgsm_attack(m, x, y, eps=4/255),
         'fgsm_8': lambda m, x, y: fgsm_attack(m, x, y, eps=8/255),
         'pgd_4': lambda m, x, y: pgd_attack(m, x, y, eps=4/255),
         'pgd_8': lambda m, x, y: pgd_attack(m, x, y, eps=8/255),
     }
-
+    
     attack_results = {name: {'correct': 0, 'total': 0} for name in attacks.keys()}
-
+    
     for images, targets in loader:
         images = images.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
         batch_size = targets.size(0)
-
+        
         # Clean evaluation
         clean_logits = model(images)
         clean_loss += criterion(clean_logits, targets).item() * batch_size
         clean_pred = clean_logits.argmax(1)
         clean_correct += (clean_pred == targets).sum().item()
         clean_total += batch_size
-
-        # Attack evaluation loop
+        
+        # Attack evaluations
         for attack_name, attack_fn in attacks.items():
             adv_images = attack_fn(model, images, targets)
             adv_logits = model(adv_images)
             adv_pred = adv_logits.argmax(1)
             attack_results[attack_name]['correct'] += (adv_pred == targets).sum().item()
             attack_results[attack_name]['total'] += batch_size
-
-    # Compile clean results
+    
+    # Compile results
     results['clean_accuracy'] = clean_correct / clean_total if clean_total > 0 else 0.0
     results['clean_loss'] = clean_loss / clean_total if clean_total > 0 else 0.0
-
-    # Compile attack accuracies
+    
     for attack_name in attacks.keys():
         acc = attack_results[attack_name]['correct'] / attack_results[attack_name]['total'] if attack_results[attack_name]['total'] > 0 else 0.0
         results[f'{attack_name}_accuracy'] = acc
-
-    # Average robustness across the chosen attack set
+    
+    # Calculate average robustness
     attack_accuracies = [results[f'{name}_accuracy'] for name in attacks.keys()]
     results['avg_robust_accuracy'] = np.mean(attack_accuracies) if attack_accuracies else 0.0
-
+    
     return results
 
 # ------------------------------------------------------------
-# 5. MAIN ADVERSARIAL TRAINING ENTRYPOINT
+# 5. MAIN ADVERSARIAL TRAINING FUNCTION - DIPERBAIKI
 # ------------------------------------------------------------
 def main():
-    # Device selection (GPU if available, else CPU)
+    # Setup device
     if torch.cuda.is_available():
         device = torch.device("cuda")
         torch.backends.cudnn.benchmark = True
@@ -524,32 +444,32 @@ def main():
     else:
         device = torch.device("cpu")
         print("[DEVICE] Using CPU")
-
-    # Create a run-specific output directory
+    
+    # Create save directory
     save_dir = create_save_dir("robust_adv_train")
     print(f"[INFO] Save directory: {save_dir}")
 
     try:
-        # Load dataloaders and infer number of classes
+        # Load dataloaders
         train_loader, val_loader, test_loader, idx_to_class = get_dataloaders()
         num_classes = len(idx_to_class)
         print(f"[INFO] Successfully loaded dataloaders - {num_classes} classes")
 
-        # Load base model metadata (config + class mapping)
+        # Load base model configuration
         with open(BASE_CONFIG_PATH, "r", encoding="utf-8") as f:
             base_config = json.load(f)
         with open(BASE_CLASSMAP_PATH, "r", encoding="utf-8") as f:
             base_mapping = json.load(f)
 
-        # Build a Vim model that matches the base checkpoint architecture
+        # Build model yang KOMPATIBEL dengan base model
         vim_kwargs = build_vim_kwargs_compatible(num_classes=num_classes, img_size=224)
         print("[INFO] Model kwargs (COMPATIBLE):", vim_kwargs)
         model = Vim(**vim_kwargs).to(device)
 
-        # Load base model weights (supports both ckpt["model"] and raw state_dict)
+        # Load base model weights - DENGAN COMPATIBILITY CHECK
         print("[INFO] Loading base model weights...")
         base_ckpt = torch.load(BASE_CKPT_PATH, map_location=device)
-
+        
         # Cek apakah model memiliki key 'model' atau langsung state_dict
         if "model" in base_ckpt:
             print("[INFO] Loading from checkpoint with 'model' key")
@@ -557,18 +477,18 @@ def main():
         else:
             print("[INFO] Loading checkpoint directly as state_dict")
             model.load_state_dict(base_ckpt, strict=True)
-
+        
         print("[INFO] ✅ Successfully loaded base model weights!")
 
-        # Configure the adversarial training scheduler (attack type + epsilon rotation)
+        # Setup attack scheduler
         attack_fns = [fgsm_attack, pgd_attack]
         attack_scheduler = AttackScheduler(attack_fns, ATTACK_EPSILONS)
-
+        
         print("[INFO] Attack scheduler configured with:")
         print(f"  - Attack functions: {[fn.__name__ for fn in attack_fns]}")
         print(f"  - Epsilons: {ATTACK_EPSILONS}")
 
-        # Persist training configuration for reproducibility
+        # Save configuration
         config = {
             "base_model": str(BASE_CKPT_PATH),
             "batch_size": BATCH_SIZE,
@@ -582,32 +502,32 @@ def main():
             "model_config": vim_kwargs,
             "compatible_with_base": True,
         }
-
+        
         config_path = save_dir / "training_config.json"
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)
         print(f"[INFO] Configuration saved: {config_path}")
 
-        # Save class mapping used by the base model
+        # Save class mapping
         classmap_path = save_dir / "class_mapping.json"
         with open(classmap_path, "w", encoding="utf-8") as f:
             json.dump(base_mapping, f, indent=2)
 
-        # Optimizer + LR schedule
+        # Optimizer dan scheduler
         optimizer = torch.optim.AdamW(
             model.parameters(),
             lr=BASE_LR,
             weight_decay=WEIGHT_DECAY,
         )
-
-        # Cosine annealing LR scheduler
+        
+        # Cosine annealing scheduler
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=MAX_EPOCHS
         )
-
+        
         criterion = nn.CrossEntropyLoss()
 
-        # Training history for CSV plotting/reporting
+        # Training history
         history = {
             "epoch": [],
             "train_loss": [],
@@ -619,7 +539,7 @@ def main():
             "learning_rate": [],
         }
 
-        # Per-attack validation tracking
+        # Attack-specific history
         attack_history = {
             'fgsm_4_acc': [], 'fgsm_8_acc': [],
             'pgd_4_acc': [], 'pgd_8_acc': [],
@@ -632,7 +552,7 @@ def main():
         print("[INFO] Memulai Adversarial Training...")
         print("="*60)
 
-        # Baseline evaluation before training
+        # Initial evaluation
         print("[INFO] Initial evaluation on validation set...")
         initial_results = evaluate_robustness(model, val_loader, criterion, device)
         print(f"Initial Clean Acc: {initial_results['clean_accuracy']*100:.2f}%")
@@ -641,22 +561,21 @@ def main():
         for epoch in range(1, MAX_EPOCHS + 1):
             print(f"\n[Epoch {epoch}/{MAX_EPOCHS}]")
             start_time = time.time()
-
-            # One epoch of adversarial training
+            
+            # Adversarial training
             train_loss, train_adv_acc, train_clean_acc = adversarial_train_one_epoch(
-                model, train_loader, criterion, optimizer, device,
+                model, train_loader, criterion, optimizer, device, 
                 attack_scheduler, epoch
             )
-
-            # Validation evaluation under fixed attacks
+            
+            # Evaluation
             val_results = evaluate_robustness(model, val_loader, criterion, device)
-
-            # Step the LR scheduler once per epoch
+            
             scheduler.step()
             current_lr = optimizer.param_groups[0]['lr']
             epoch_time = time.time() - start_time
 
-            # Update aggregated history
+            # Update history
             history["epoch"].append(epoch)
             history["train_loss"].append(train_loss)
             history["train_adv_acc"].append(train_adv_acc)
@@ -664,13 +583,13 @@ def main():
             history["val_clean_acc"].append(val_results['clean_accuracy'])
             history["val_avg_robust_acc"].append(val_results['avg_robust_accuracy'])
             history["learning_rate"].append(current_lr)
-
-            # Update per-attack validation history (if present)
+            
+            # Update attack-specific history
             for attack_name in attack_history.keys():
                 if f'{attack_name}_accuracy' in val_results:
                     attack_history[attack_name].append(val_results[f'{attack_name}_accuracy'])
 
-            # Print epoch summary
+            # Print results
             print(f"Training:")
             print(f"  Loss: {train_loss:.4f}, Clean Acc: {train_clean_acc*100:.2f}%, Adv Acc: {train_adv_acc*100:.2f}%")
             print(f"Validation:")
@@ -679,7 +598,7 @@ def main():
             print(f"  Learning Rate: {current_lr:.2e}")
             print(f"  Epoch Time: {epoch_time:.1f}s")
 
-            # Save best checkpoint based on average robust validation accuracy
+            # Save best model berdasarkan average robust accuracy
             if val_results['avg_robust_accuracy'] > best_avg_robust_acc:
                 best_avg_robust_acc = val_results['avg_robust_accuracy']
                 torch.save(
@@ -695,7 +614,7 @@ def main():
                 )
                 print(f"  → [BEST] Model saved (Avg Robust Acc: {best_avg_robust_acc*100:.2f}%)")
 
-            # Periodic checkpointing (every 10 epochs)
+            # Save checkpoint setiap 10 epoch
             if epoch % 10 == 0:
                 checkpoint_path = save_dir / f"checkpoint_epoch_{epoch}.pth"
                 torch.save(
@@ -709,12 +628,10 @@ def main():
                 )
                 print(f"  → Checkpoint saved: {checkpoint_path}")
 
-        # --------------------------------------------------------
-        # Final evaluation on the held-out test set
-        # --------------------------------------------------------
+        # Final evaluation on test set
         print("\n[INFO] Final evaluation on test set...")
         test_results = evaluate_robustness(model, test_loader, criterion, device)
-
+        
         print(f"Final Test Results:")
         print(f"  Clean Accuracy: {test_results['clean_accuracy']*100:.2f}%")
         print(f"  Average Robust Accuracy: {test_results['avg_robust_accuracy']*100:.2f}%")
@@ -722,7 +639,7 @@ def main():
             acc = test_results.get(f'{attack_name}_accuracy', 0)
             print(f"  {attack_name}: {acc*100:.2f}%")
 
-        # Save final checkpoint (last epoch)
+        # Save final model
         final_ckpt_path = save_dir / "final_robust_model.pth"
         torch.save(
             {
@@ -739,14 +656,14 @@ def main():
         # 6. SAVE RESULTS & VISUALIZATION
         # --------------------------------------------------------
         print("\n[INFO] Saving results and visualizations...")
-
-        # Save history to CSV for later plotting/analysis
+        
+        # Save history to CSV
         df_history = pd.DataFrame(history)
         history_csv_path = save_dir / "training_history.csv"
         df_history.to_csv(history_csv_path, index=False)
         print(f"  - Training history: {history_csv_path}")
 
-        # Save a compact JSON report for quick inspection
+        # Save final report
         report = {
             "training_summary": {
                 "final_epoch": MAX_EPOCHS,
@@ -758,53 +675,53 @@ def main():
             },
             "test_results": test_results,
         }
-
+        
         report_path = save_dir / "training_report.json"
         with open(report_path, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2)
         print(f"  - Training report: {report_path}")
 
-        # Create visualizations (accuracy/loss/LR + robustness bar chart)
+        # Create visualizations
         plt.style.use('seaborn-v0_8')
         fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-
+        
         # Plot 1: Accuracy curves
-        axes[0, 0].plot(history["epoch"], np.array(history["train_clean_acc"]) * 100,
+        axes[0, 0].plot(history["epoch"], np.array(history["train_clean_acc"]) * 100, 
                        label='Train Clean Acc', linewidth=2)
-        axes[0, 0].plot(history["epoch"], np.array(history["train_adv_acc"]) * 100,
+        axes[0, 0].plot(history["epoch"], np.array(history["train_adv_acc"]) * 100, 
                        label='Train Adv Acc', linewidth=2)
-        axes[0, 0].plot(history["epoch"], np.array(history["val_clean_acc"]) * 100,
+        axes[0, 0].plot(history["epoch"], np.array(history["val_clean_acc"]) * 100, 
                        label='Val Clean Acc', linewidth=2)
-        axes[0, 0].plot(history["epoch"], np.array(history["val_avg_robust_acc"]) * 100,
+        axes[0, 0].plot(history["epoch"], np.array(history["val_avg_robust_acc"]) * 100, 
                        label='Val Avg Robust Acc', linewidth=2)
         axes[0, 0].set_xlabel('Epoch')
         axes[0, 0].set_ylabel('Accuracy (%)')
         axes[0, 0].set_title('Training and Validation Accuracy')
         axes[0, 0].legend()
         axes[0, 0].grid(True, alpha=0.3)
-
+        
         # Plot 2: Loss curves
-        axes[0, 1].plot(history["epoch"], history["train_loss"],
+        axes[0, 1].plot(history["epoch"], history["train_loss"], 
                        label='Train Loss', linewidth=2)
         axes[0, 1].set_xlabel('Epoch')
         axes[0, 1].set_ylabel('Loss')
         axes[0, 1].set_title('Training Loss')
         axes[0, 1].legend()
         axes[0, 1].grid(True, alpha=0.3)
-
-        # Plot 3: Learning rate (log scale)
-        axes[1, 0].plot(history["epoch"], history["learning_rate"],
+        
+        # Plot 3: Learning rate
+        axes[1, 0].plot(history["epoch"], history["learning_rate"], 
                        linewidth=2, color='red')
         axes[1, 0].set_xlabel('Epoch')
         axes[1, 0].set_ylabel('Learning Rate')
         axes[1, 0].set_title('Learning Rate Schedule')
         axes[1, 0].set_yscale('log')
         axes[1, 0].grid(True, alpha=0.3)
-
-        # Plot 4: Robustness comparison (base vs robust model)
+        
+        # Plot 4: Robustness comparison
         categories = ['Clean', 'FGSM (ε=4/255)', 'FGSM (ε=8/255)', 'PGD (ε=4/255)', 'PGD (ε=8/255)']
         base_values = [45.5, 0, 0, 0, 0]  # Base model
-
+        
         adv_values = [
             test_results['clean_accuracy'] * 100,
             test_results.get('fgsm_4_accuracy', 0) * 100,
@@ -812,10 +729,10 @@ def main():
             test_results.get('pgd_4_accuracy', 0) * 100,
             test_results.get('pgd_8_accuracy', 0) * 100,
         ]
-
+        
         x = np.arange(len(categories))
         width = 0.35
-
+        
         axes[1, 1].bar(x - width/2, base_values, width, label='Base Model', alpha=0.7)
         axes[1, 1].bar(x + width/2, adv_values, width, label='Robust Model', alpha=0.7)
         axes[1, 1].set_xlabel('Attack Type')
@@ -825,7 +742,7 @@ def main():
         axes[1, 1].set_xticklabels(categories, rotation=45, ha='right')
         axes[1, 1].legend()
         axes[1, 1].grid(True, alpha=0.3)
-
+        
         plt.tight_layout()
         curves_path = save_dir / "training_results.png"
         plt.savefig(curves_path, dpi=300, bbox_inches='tight')
@@ -839,20 +756,20 @@ def main():
         print(f"Best Avg Robust Accuracy: {best_avg_robust_acc*100:.2f}%")
         print(f"Final Test Clean Accuracy: {test_results['clean_accuracy']*100:.2f}%")
         print(f"Final Test Robust Accuracy: {test_results['avg_robust_accuracy']*100:.2f}%")
-
+        
         improvement = test_results['avg_robust_accuracy'] * 100
         print(f"Robustness Improvement: +{improvement:.2f}%")
-
+        
         print("\nGenerated Files:")
         for file_name in [
             "best_robust_model.pth", "final_robust_model.pth",
-            "training_history.csv", "training_report.json",
+            "training_history.csv", "training_report.json", 
             "training_results.png"
         ]:
             file_path = save_dir / file_name
             if file_path.exists():
                 print(f"  ✓ {file_name}")
-
+        
         print("="*70)
 
     except Exception as e:
@@ -860,8 +777,8 @@ def main():
         print("Traceback:")
         import traceback
         traceback.print_exc()
-
-        # Save an error log for debugging
+        
+        # Save error log
         error_log_path = save_dir / "error_log.txt"
         with open(error_log_path, "w") as f:
             f.write(f"Error during training: {str(e)}\n")
