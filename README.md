@@ -349,13 +349,7 @@ If you use this code in your research, please cite:
 
 **Marthen Amelius Solang**
 
-Master's Program in Informatics
-
-Institut Teknologi Bandung (ITB)
-
-NIM: 23523305
-
----
+--
 
 *Research completed: December 2025*
 
